@@ -1,0 +1,20 @@
+input:
+  recursive: true
+  image_extensions: [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"]
+  video_extensions: [".mp4", ".avi", ".mov", ".mkv", ".webm"]
+  max_video_frames: 16
+
+model:
+  name: artifact_baseline
+  threshold: 0.5
+
+submission:
+  id_from: stem
+  columns:
+    id: id
+    score: score
+    label: label
+  labels:
+    real: real
+    fake: deepfake
+

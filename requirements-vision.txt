@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Useful for video decoding and stronger pretrained baselines.
+opencv-python>=4.9
+torch>=2.2
+timm>=1.0

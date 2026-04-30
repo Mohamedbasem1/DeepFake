@@ -1,0 +1,24 @@
+input:
+  recursive: true
+  image_extensions: [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"]
+  video_extensions: []
+  max_video_frames: 1
+
+model:
+  name: hf_siglip
+  model_id: prithivMLmods/Deep-Fake-Detector-v2-Model
+  threshold: 0.5
+  device: auto
+  half_precision: true
+  tta: ["none", "hflip"]
+
+submission:
+  id_from: name
+  columns:
+    id: full_secret_name
+    score:
+    label: prediction
+  labels:
+    real: 0
+    fake: 1
+

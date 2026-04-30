@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "imageclef-deepfake-detector"
+version = "0.1.0"
+description = "Inference and submission pipeline for ImageCLEF 2026 deepfake detection."
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "pillow>=10.0",
+  "pyyaml>=6.0",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+vision = ["opencv-python>=4.9", "torch>=2.2", "timm>=1.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+deepfake-detect = "deepfake_detector.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

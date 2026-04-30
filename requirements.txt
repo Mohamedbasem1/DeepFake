@@ -1,0 +1,5 @@
+numpy>=1.26
+pillow>=10.0
+pyyaml>=6.0
+tqdm>=4.66
+pytest>=8.0
