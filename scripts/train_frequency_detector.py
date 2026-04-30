@@ -9,6 +9,7 @@ from pathlib import Path
 
 import joblib
 import numpy as np
+from joblib import Parallel, delayed
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
@@ -37,6 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit-per-class", type=int)
     parser.add_argument("--max-iter", type=int, default=500)
     parser.add_argument("--learning-rate", type=float, default=0.04)
+    parser.add_argument("--num-workers", type=int, default=-1, help="Parallel feature workers. -1 uses all cores.")
+    parser.add_argument("--cache", type=Path, help="Optional .npz cache for extracted features.")
     return parser
 
 
@@ -49,8 +52,20 @@ def main() -> None:
     print_counts("train", train_samples)
     print_counts("val", val_samples)
 
-    x_train, y_train = featurize(train_samples, args.image_size, args.radial_bins)
-    x_val, y_val = featurize(val_samples, args.image_size, args.radial_bins)
+    if args.cache and args.cache.exists():
+        print(f"loading features from cache: {args.cache}")
+        cached = np.load(args.cache, allow_pickle=False)
+        x_train = cached["x_train"]
+        y_train = cached["y_train"]
+        x_val = cached["x_val"]
+        y_val = cached["y_val"]
+    else:
+        x_train, y_train = featurize(train_samples, args.image_size, args.radial_bins, args.num_workers)
+        x_val, y_val = featurize(val_samples, args.image_size, args.radial_bins, args.num_workers)
+        if args.cache:
+            args.cache.parent.mkdir(parents=True, exist_ok=True)
+            np.savez_compressed(args.cache, x_train=x_train, y_train=y_train, x_val=x_val, y_val=y_val)
+            print(f"saved features cache: {args.cache}")
 
     model = HistGradientBoostingClassifier(
         max_iter=args.max_iter,
@@ -129,14 +144,18 @@ def split_samples(samples: list[Sample], val_frac: float, seed: int) -> tuple[li
     return train, val
 
 
-def featurize(samples: list[Sample], image_size: int, radial_bins: int) -> tuple[np.ndarray, np.ndarray]:
-    features = []
-    labels = []
-    for index, sample in enumerate(samples, start=1):
-        if index % 1000 == 0:
-            print(f"features {index}/{len(samples)}")
-        features.append(extract_frequency_features(sample.path, image_size=image_size, radial_bins=radial_bins))
-        labels.append(sample.label)
+def featurize(
+    samples: list[Sample],
+    image_size: int,
+    radial_bins: int,
+    num_workers: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    print(f"extracting {len(samples)} feature vectors with num_workers={num_workers}")
+    features = Parallel(n_jobs=num_workers, backend="loky", verbose=10)(
+        delayed(extract_frequency_features)(sample.path, image_size=image_size, radial_bins=radial_bins)
+        for sample in samples
+    )
+    labels = [sample.label for sample in samples]
     return np.vstack(features), np.asarray(labels, dtype=np.int32)
 
 
@@ -155,4 +174,3 @@ def write_metrics(path: Path, metrics: dict[str, float]) -> None:
 
 if __name__ == "__main__":
     main()
-
