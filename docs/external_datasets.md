@@ -111,6 +111,47 @@ python scripts/extract_video_frames.py \
 For DeeperForensics real videos, use FaceForensics++ C23 originals as described
 above.
 
+## Approved Download Shortcuts
+
+After you receive the approved FaceForensics++ email, save the linked download
+script as:
+
+```text
+data/external/FaceForensics_download.py
+```
+
+Then run:
+
+```bash
+bash scripts/bootstrap_faceforensics_deeper.sh
+```
+
+If you only have the approved script somewhere else:
+
+```bash
+FF_DOWNLOAD_SCRIPT=/path/to/download.py bash scripts/bootstrap_faceforensics_deeper.sh
+```
+
+If your email exposes the actual script URL:
+
+```bash
+FF_DOWNLOAD_SCRIPT_URL="APPROVED_FACEFORENSICS_SCRIPT_URL" \
+  bash scripts/bootstrap_faceforensics_deeper.sh
+```
+
+By default this uses:
+
+- FaceForensics++ server `EU2`
+- compression `c23`
+- datasets `original Deepfakes Face2Face FaceSwap NeuralTextures`
+- DeeperForensics Google Drive id `1s3KwYyTIXT78VzkRazn9QDPuNh18TWe-`
+
+For smaller/faster FaceForensics++ downloads, use `c40`:
+
+```bash
+FF_COMPRESSION=c40 bash scripts/bootstrap_faceforensics_deeper.sh
+```
+
 ## Fine-Tune
 
 Once frames are ready:
@@ -140,4 +181,3 @@ python scripts/run_inference.py \
 - Avoid using only one fake method; mix datasets if possible.
 - Do not fine-tune on ImageCLEF test images because they have no labels.
 - Keep pretrained Community Forensics predictions as a baseline for comparison.
-
