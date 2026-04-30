@@ -79,3 +79,6 @@ column for analysis and threshold calibration.
 3. Add external validation data and keep a local validation manifest.
 4. Add audio detection if you want to submit the audio subtask too.
 5. Ensemble model scores and calibrate the final threshold.
+
+See `docs/finetuning.md` for extracting frames from video deepfake datasets and
+fine-tuning the Community Forensics checkpoint.

@@ -67,3 +67,55 @@ The risk is domain overfitting: improving on FaceForensics or DFDC can hurt on
 unseen ImageCLEF generators. Keep the pretrained Community Forensics model as a
 baseline and ensemble candidate.
 
+## Fine-Tune Community Forensics
+
+First pull the latest repo on Lightning:
+
+```bash
+git pull
+pip install -r requirements-lightning.txt
+```
+
+Start with a quick head-only run:
+
+```bash
+python scripts/finetune_commfor.py \
+  --train-root data/finetune/frames \
+  --output models/commfor_finetuned.pt \
+  --epochs 2 \
+  --batch-size 32 \
+  --freeze-backbone \
+  --use-amp
+```
+
+If validation F1 improves and the model does not collapse to one class, try a
+careful full-model run:
+
+```bash
+python scripts/finetune_commfor.py \
+  --train-root data/finetune/frames \
+  --output models/commfor_finetuned.pt \
+  --epochs 2 \
+  --batch-size 16 \
+  --lr 1e-6 \
+  --head-lr 2e-5 \
+  --use-amp
+```
+
+Run ImageCLEF inference with the fine-tuned checkpoint:
+
+```bash
+python scripts/run_inference.py \
+  --config configs/image_detection_commfor_finetuned.yaml \
+  --input data/raw/imageclef_detection/Data/Images_Detection \
+  --output outputs/images_detection_submission_finetuned.csv
+```
+
+For threshold analysis, export scores too:
+
+```bash
+python scripts/run_inference.py \
+  --config configs/image_detection_commfor_finetuned_scores.yaml \
+  --input data/raw/imageclef_detection/Data/Images_Detection \
+  --output outputs/images_detection_scores_finetuned.csv
+```

@@ -158,6 +158,7 @@ class CommunityForensicsDetector:
     device: str = "auto"
     tta: tuple[str, ...] = ("none",)
     half_precision: bool = True
+    ckpt_path: str | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -173,60 +174,9 @@ class CommunityForensicsDetector:
 
         self._torch = torch
         self._device = self._resolve_device(self.device)
-        self._transform = self._build_transform(transforms)
-
-        class ViTClassifier(torch.nn.Module, PyTorchModelHubMixin):
-            def __init__(
-                self,
-                model_size: str = "small",
-                input_size: int = 384,
-                patch_size: int = 16,
-                freeze_backbone: bool = False,
-                device: str = "cuda",
-                dtype: torch.dtype = torch.float32,
-            ) -> None:
-                super().__init__()
-                if model_size == "small":
-                    if input_size == 224 and patch_size == 32:
-                        model_name = "vit_small_patch32_224.augreg_in21k_ft_in1k"
-                    elif input_size == 224 and patch_size == 16:
-                        model_name = "vit_small_patch16_224.augreg_in21k_ft_in1k"
-                    elif input_size == 384 and patch_size == 32:
-                        model_name = "vit_small_patch32_384.augreg_in21k_ft_in1k"
-                    elif input_size == 384 and patch_size == 16:
-                        model_name = "vit_small_patch16_384.augreg_in21k_ft_in1k"
-                    else:
-                        raise ValueError(f"Unsupported small ViT shape: {input_size}, patch {patch_size}")
-                    head_features = 384
-                elif model_size == "tiny":
-                    if patch_size != 16:
-                        raise ValueError("Only patch size 16 is available for ViT-Ti.")
-                    if input_size == 224:
-                        model_name = "vit_tiny_patch16_224.augreg_in21k_ft_in1k"
-                    elif input_size == 384:
-                        model_name = "vit_tiny_patch16_384.augreg_in21k_ft_in1k"
-                    else:
-                        raise ValueError(f"Unsupported tiny ViT input size: {input_size}")
-                    head_features = 192
-                else:
-                    raise ValueError(f"Unsupported Community Forensics model size: {model_size}")
-
-                self.vit = timm.create_model(model_name, pretrained=True).to(device)
-                if freeze_backbone:
-                    for parameter in self.vit.parameters():
-                        parameter.requires_grad = False
-                self.vit.head = torch.nn.Linear(
-                    in_features=head_features,
-                    out_features=1,
-                    bias=True,
-                    device=device,
-                    dtype=dtype,
-                )
-
-            def forward(self, x):
-                return self.vit(x)
-
-        self._model = ViTClassifier.from_pretrained(
+        self._transform = build_commfor_transform(transforms, self.input_size)
+        model_class = get_commfor_model_class(torch, timm, PyTorchModelHubMixin)
+        self._model = model_class.from_pretrained(
             self.model_repo,
             model_size=self.model_size,
             input_size=self.input_size,
@@ -235,6 +185,10 @@ class CommunityForensicsDetector:
             device=self._device,
             dtype=torch.float32,
         )
+        if self.ckpt_path:
+            checkpoint = torch.load(self.ckpt_path, map_location="cpu")
+            state_dict = checkpoint.get("model_state_dict", checkpoint)
+            self._model.load_state_dict(state_dict)
         self._model.to(self._device)
         if self.half_precision and self._device.startswith("cuda"):
             self._model.half()
@@ -250,6 +204,7 @@ class CommunityForensicsDetector:
             device=str(options.get("device", "auto")),
             tta=tuple(options.get("tta", ["none"])),
             half_precision=bool(options.get("half_precision", True)),
+            ckpt_path=str(options["ckpt_path"]) if options.get("ckpt_path") else None,
         )
 
     def predict_image(self, image: np.ndarray) -> float:
@@ -279,22 +234,78 @@ class CommunityForensicsDetector:
             return requested
         return "cuda" if self._torch.cuda.is_available() else "cpu"
 
-    def _build_transform(self, transforms):
-        if self.input_size == 224:
-            resize_size = 256
-        elif self.input_size == 384:
-            resize_size = 440
-        else:
-            raise ValueError(f"Unsupported Community Forensics input size: {self.input_size}")
 
-        return transforms.Compose(
-            [
-                transforms.Resize(resize_size),
-                transforms.CenterCrop(self.input_size),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ]
-        )
+def get_commfor_model_class(torch, timm, hub_mixin):
+    class ViTClassifier(torch.nn.Module, hub_mixin):
+        def __init__(
+            self,
+            model_size: str = "small",
+            input_size: int = 384,
+            patch_size: int = 16,
+            freeze_backbone: bool = False,
+            device: str = "cuda",
+            dtype: torch.dtype = torch.float32,
+        ) -> None:
+            super().__init__()
+            model_name, head_features = resolve_commfor_vit(model_size, input_size, patch_size)
+            self.vit = timm.create_model(model_name, pretrained=True).to(device)
+            if freeze_backbone:
+                for parameter in self.vit.parameters():
+                    parameter.requires_grad = False
+            self.vit.head = torch.nn.Linear(
+                in_features=head_features,
+                out_features=1,
+                bias=True,
+                device=device,
+                dtype=dtype,
+            )
+
+        def forward(self, x):
+            return self.vit(x)
+
+    return ViTClassifier
+
+
+def resolve_commfor_vit(model_size: str, input_size: int, patch_size: int) -> tuple[str, int]:
+    if model_size == "small":
+        if input_size == 224 and patch_size == 32:
+            return "vit_small_patch32_224.augreg_in21k_ft_in1k", 384
+        if input_size == 224 and patch_size == 16:
+            return "vit_small_patch16_224.augreg_in21k_ft_in1k", 384
+        if input_size == 384 and patch_size == 32:
+            return "vit_small_patch32_384.augreg_in21k_ft_in1k", 384
+        if input_size == 384 and patch_size == 16:
+            return "vit_small_patch16_384.augreg_in21k_ft_in1k", 384
+        raise ValueError(f"Unsupported small ViT shape: {input_size}, patch {patch_size}")
+
+    if model_size == "tiny":
+        if patch_size != 16:
+            raise ValueError("Only patch size 16 is available for ViT-Ti.")
+        if input_size == 224:
+            return "vit_tiny_patch16_224.augreg_in21k_ft_in1k", 192
+        if input_size == 384:
+            return "vit_tiny_patch16_384.augreg_in21k_ft_in1k", 192
+        raise ValueError(f"Unsupported tiny ViT input size: {input_size}")
+
+    raise ValueError(f"Unsupported Community Forensics model size: {model_size}")
+
+
+def build_commfor_transform(transforms, input_size: int):
+    if input_size == 224:
+        resize_size = 256
+    elif input_size == 384:
+        resize_size = 440
+    else:
+        raise ValueError(f"Unsupported Community Forensics input size: {input_size}")
+
+    return transforms.Compose(
+        [
+            transforms.Resize(resize_size),
+            transforms.CenterCrop(input_size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
 
 
 def rgb_to_gray(image: np.ndarray) -> np.ndarray:

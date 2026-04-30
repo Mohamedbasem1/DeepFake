@@ -1,0 +1,27 @@
+input:
+  recursive: true
+  image_extensions: [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"]
+  video_extensions: []
+  max_video_frames: 1
+
+model:
+  name: commfor
+  model_repo: OwensLab/commfor-model-384
+  ckpt_path: models/commfor_finetuned.pt
+  model_size: small
+  input_size: 384
+  patch_size: 16
+  threshold: 0.5
+  device: auto
+  half_precision: true
+  tta: ["none", "hflip"]
+
+submission:
+  id_from: name
+  columns:
+    id: full_secret_name
+    score: score
+    label: prediction
+  labels:
+    real: 0
+    fake: 1
