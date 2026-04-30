@@ -74,6 +74,20 @@ python scripts/train_embedding_classifier.py \
   --c 0.5
 ```
 
+If the real class has only about 7k unique frames, use augmented training views:
+
+```bash
+python scripts/train_embedding_classifier.py \
+  --train-root data/finetune/frames \
+  --output models/siglip_embedding_classifier_aug.joblib \
+  --cache models/siglip_embedding_features_aug_v3.npz \
+  --batch-size 96 \
+  --limit-per-class 15000 \
+  --train-views 3 \
+  --augment \
+  --c 0.5
+```
+
 ## Predict ImageCLEF
 
 ```bash
@@ -111,4 +125,3 @@ python scripts/merge_multiple_scores.py \
   --inputs score_a.csv score_b.csv score_c.csv \
   --output outputs/merged_submission.csv
 ```
-

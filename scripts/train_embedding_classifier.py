@@ -10,7 +10,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import torch
-from PIL import Image, ImageOps
+from PIL import Image, ImageEnhance, ImageOps
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from torch.utils.data import DataLoader, Dataset
@@ -27,17 +27,32 @@ class Sample:
 
 
 class ImageDataset(Dataset):
-    def __init__(self, samples: list[Sample], processor) -> None:
+    def __init__(
+        self,
+        samples: list[Sample],
+        processor,
+        augment: bool = False,
+        views_per_sample: int = 1,
+        seed: int = 42,
+    ) -> None:
         self.samples = samples
         self.processor = processor
+        self.augment = augment
+        self.views_per_sample = max(1, views_per_sample)
+        self.seed = seed
 
     def __len__(self) -> int:
-        return len(self.samples)
+        return len(self.samples) * self.views_per_sample
 
     def __getitem__(self, index: int):
-        sample = self.samples[index]
+        sample_index = index % len(self.samples)
+        view_index = index // len(self.samples)
+        sample = self.samples[sample_index]
         with Image.open(sample.path) as image:
             image = ImageOps.exif_transpose(image).convert("RGB")
+            if self.augment and view_index > 0:
+                rng = random.Random(self.seed + index)
+                image = augment_image(image, rng)
         return image, sample.label
 
 
@@ -55,6 +70,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-iter", type=int, default=2000)
     parser.add_argument("--c", type=float, default=1.0, help="Logistic regression inverse regularization.")
+    parser.add_argument(
+        "--train-views",
+        type=int,
+        default=1,
+        help="Number of embedding views per training image. Values >1 add augmented views.",
+    )
+    parser.add_argument("--augment", action="store_true", help="Apply PIL augmentations to extra training views.")
     return parser
 
 
@@ -77,8 +99,30 @@ def main() -> None:
         processor = AutoImageProcessor.from_pretrained(args.model_id)
         model = AutoModel.from_pretrained(args.model_id).to(device)
         model.eval()
-        x_train, y_train = extract_embeddings(train_samples, processor, model, device, args.batch_size, args.num_workers)
-        x_val, y_val = extract_embeddings(val_samples, processor, model, device, args.batch_size, args.num_workers)
+        x_train, y_train = extract_embeddings(
+            train_samples,
+            processor,
+            model,
+            device,
+            args.batch_size,
+            args.num_workers,
+            augment=args.augment,
+            views_per_sample=args.train_views,
+            seed=args.seed,
+            split_name="train",
+        )
+        x_val, y_val = extract_embeddings(
+            val_samples,
+            processor,
+            model,
+            device,
+            args.batch_size,
+            args.num_workers,
+            augment=False,
+            views_per_sample=1,
+            seed=args.seed,
+            split_name="val",
+        )
         args.cache.parent.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(args.cache, x_train=x_train, y_train=y_train, x_val=x_val, y_val=y_val)
         print(f"saved cache: {args.cache}")
@@ -118,13 +162,28 @@ def main() -> None:
 
 
 @torch.no_grad()
-def extract_embeddings(samples: list[Sample], processor, model, device: str, batch_size: int, num_workers: int):
+def extract_embeddings(
+    samples: list[Sample],
+    processor,
+    model,
+    device: str,
+    batch_size: int,
+    num_workers: int,
+    augment: bool,
+    views_per_sample: int,
+    seed: int,
+    split_name: str,
+):
     loader = DataLoader(
-        ImageDataset(samples, processor),
+        ImageDataset(samples, processor, augment=augment, views_per_sample=views_per_sample, seed=seed),
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
         collate_fn=lambda batch: batch,
+    )
+    print(
+        f"extracting {split_name} embeddings: "
+        f"samples={len(samples)} views={views_per_sample} total={len(loader.dataset)} augment={augment}"
     )
     features = []
     labels = []
@@ -140,6 +199,28 @@ def extract_embeddings(samples: list[Sample], processor, model, device: str, bat
         if index % 25 == 0:
             print(f"batches {index}/{len(loader)}")
     return np.vstack(features), np.asarray(labels, dtype=np.int32)
+
+
+def augment_image(image: Image.Image, rng: random.Random) -> Image.Image:
+    if rng.random() < 0.5:
+        image = ImageOps.mirror(image)
+
+    width, height = image.size
+    crop_scale = rng.uniform(0.88, 1.0)
+    crop_width = max(1, int(width * crop_scale))
+    crop_height = max(1, int(height * crop_scale))
+    left = rng.randint(0, max(width - crop_width, 0))
+    top = rng.randint(0, max(height - crop_height, 0))
+    image = image.crop((left, top, left + crop_width, top + crop_height)).resize((width, height), Image.Resampling.BICUBIC)
+
+    image = ImageEnhance.Brightness(image).enhance(rng.uniform(0.85, 1.15))
+    image = ImageEnhance.Contrast(image).enhance(rng.uniform(0.85, 1.15))
+    image = ImageEnhance.Color(image).enhance(rng.uniform(0.85, 1.15))
+    image = ImageEnhance.Sharpness(image).enhance(rng.uniform(0.85, 1.25))
+
+    if rng.random() < 0.25:
+        image = image.rotate(rng.uniform(-5.0, 5.0), resample=Image.Resampling.BICUBIC, fillcolor=(0, 0, 0))
+    return image
 
 
 def get_image_embedding(outputs) -> torch.Tensor:
@@ -222,4 +303,3 @@ def resolve_device(requested: str) -> str:
 
 if __name__ == "__main__":
     main()
-

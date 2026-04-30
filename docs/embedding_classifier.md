@@ -21,6 +21,21 @@ python scripts/train_embedding_classifier.py \
   --limit-per-class 15000
 ```
 
+Use augmented embedding views when the real class has fewer unique images than
+the fake class:
+
+```bash
+python scripts/train_embedding_classifier.py \
+  --train-root data/finetune/frames \
+  --output models/siglip_embedding_classifier_aug.joblib \
+  --cache models/siglip_embedding_features_aug_v3.npz \
+  --batch-size 96 \
+  --limit-per-class 15000 \
+  --train-views 3 \
+  --augment \
+  --c 0.5
+```
+
 Predict ImageCLEF:
 
 ```bash
@@ -44,4 +59,3 @@ python scripts/merge_multiple_scores.py \
   --output outputs/images_detection_submission_siglip_e20_e8_avg.csv \
   --debug-output outputs/images_detection_siglip_e20_e8_avg_debug.csv
 ```
-
