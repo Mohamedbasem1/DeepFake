@@ -4,9 +4,11 @@ set -euo pipefail
 SCRIPT_URL="${SCRIPT_URL:-https://kaldir.vc.in.tum.de/faceforensics_download_v4.py}"
 SCRIPT_PATH="${SCRIPT_PATH:-data/external/faceforensics_download_v4.py}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-data/external/FaceForensics_v4}"
-DATASET_TYPE="${DATASET_TYPE:-compressed}"
+FF_COMPRESSION="${FF_COMPRESSION:-c23}"
+FF_SERVER="${FF_SERVER:-EU2}"
+FF_DATASETS="${FF_DATASETS:-original Deepfakes Face2Face FaceSwap NeuralTextures}"
 FRAMES_PER_VIDEO="${FRAMES_PER_VIDEO:-8}"
-SAMPLE_ONLY="${SAMPLE_ONLY:-0}"
+NUM_VIDEOS="${NUM_VIDEOS:-}"
 
 python -m pip install -r requirements-lightning.txt
 mkdir -p data/external data/finetune/frames "$OUTPUT_ROOT"
@@ -17,35 +19,29 @@ if [ ! -f "$SCRIPT_PATH" ]; then
     --output "$SCRIPT_PATH"
 fi
 
-sample_flag=()
-if [ "$SAMPLE_ONLY" = "1" ]; then
-  sample_flag=(--sample_only)
+num_videos_args=()
+if [ -n "$NUM_VIDEOS" ]; then
+  num_videos_args=(-n "$NUM_VIDEOS")
 fi
 
-echo "Downloading FaceForensics v4 dataset_type=$DATASET_TYPE"
-printf '\n\n' | python "$SCRIPT_PATH" \
-  "$OUTPUT_ROOT" \
-  -d "$DATASET_TYPE" \
-  --not_mask \
-  "${sample_flag[@]}"
+for dataset in $FF_DATASETS; do
+  echo "Downloading FaceForensics++ dataset=$dataset compression=$FF_COMPRESSION server=$FF_SERVER"
+  yes "" | python "$SCRIPT_PATH" \
+    "$OUTPUT_ROOT" \
+    -d "$dataset" \
+    -c "$FF_COMPRESSION" \
+    -t videos \
+    --server "$FF_SERVER" \
+    "${num_videos_args[@]}"
+done
 
-echo "Extracting frames from FaceForensics v4..."
-if [ -d "$OUTPUT_ROOT/FaceForensics_${DATASET_TYPE}" ]; then
-  if [ -d "$OUTPUT_ROOT/FaceForensics_${DATASET_TYPE}/train/original" ] || \
-     [ -d "$OUTPUT_ROOT/FaceForensics_${DATASET_TYPE}/val/original" ] || \
-     [ -d "$OUTPUT_ROOT/FaceForensics_${DATASET_TYPE}/test/original" ]; then
-    python scripts/extract_video_frames.py \
-      --input "$OUTPUT_ROOT/FaceForensics_${DATASET_TYPE}" \
-      --output data/finetune/frames \
-      --dataset-name FaceForensics_v4 \
-      --label-from-parent \
-      --frames-per-video "$FRAMES_PER_VIDEO"
-  else
-    echo "Downloaded folder exists but original/altered subfolders were not found."
-  fi
-else
-  echo "Expected folder not found: $OUTPUT_ROOT/FaceForensics_${DATASET_TYPE}"
-fi
+echo "Extracting frames from FaceForensics++..."
+python scripts/extract_video_frames.py \
+  --input "$OUTPUT_ROOT" \
+  --output data/finetune/frames \
+  --dataset-name FaceForensics_v4_${FF_COMPRESSION} \
+  --label-from-parent \
+  --frames-per-video "$FRAMES_PER_VIDEO"
 
 echo "Frame counts:"
 echo -n "real: "

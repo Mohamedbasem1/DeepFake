@@ -160,14 +160,14 @@ If your email gives `faceforensics_download_v4.py`, use:
 bash scripts/bootstrap_faceforensics_v4.sh
 ```
 
-This downloads the `compressed` source-to-target release by default, skips mask
-videos, accepts the script prompts automatically, and extracts frames from
-`original` as real and `altered` as fake.
+This downloads FaceForensics++ videos with `--server EU2` and `c23` compression
+by default, then extracts frames. The default datasets are `original`,
+`Deepfakes`, `Face2Face`, `FaceSwap`, and `NeuralTextures`.
 
 For a tiny smoke test:
 
 ```bash
-SAMPLE_ONLY=1 bash scripts/bootstrap_faceforensics_v4.sh
+NUM_VIDEOS=5 bash scripts/bootstrap_faceforensics_v4.sh
 ```
 
 ## Fine-Tune
