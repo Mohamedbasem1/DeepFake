@@ -1,100 +1,114 @@
-# ImageCLEF 2026 Deepfake Detection
+# ImageCLEF Deepfake Detection - Fresh Embedding Approach
 
-Starter workspace for the ImageCLEF 2026 deepfake detection task.
-
-The detection subtask is binary classification: decide whether each media item is
-`real` or `deepfake`. The organizers do not provide a training split for this
-subtask, so this repository starts with a robust inference/submission pipeline
-and a lightweight artifact baseline that can be replaced or ensembled with
-stronger pretrained detectors.
-
-## Project Layout
+This branch is a clean restart focused on a different strategy:
 
 ```text
-configs/default.yaml          Default inference and submission settings
-data/raw/                     Put downloaded test/dev media here
-outputs/                      Predictions and submissions
-scripts/run_inference.py      Thin script wrapper around the package CLI
-src/deepfake_detector/        Package code
-tests/                        Smoke tests for pipeline behavior
+frozen vision foundation model embeddings + shallow classifier
 ```
 
-## Setup
+The default model is `google/siglip-base-patch16-384`. We extract embeddings
+from labeled external real/fake frames, train a lightweight classifier, then run
+ImageCLEF test images through the same embedding pipeline.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -U pip
-python -m pip install -r requirements.txt
+## What To Keep Outside Git
+
+Do not commit datasets, extracted frames, checkpoints, cookies, or submissions.
+They belong under ignored folders such as:
+
+```text
+data/
+models/
+outputs/
+result/
 ```
 
-For a minimal smoke test, only `numpy`, `pillow`, `pyyaml`, and `pytest` are
-needed. Install `requirements-vision.txt` later when we add video decoding or
-stronger `torch`/`timm` model backends.
+## Setup On Lightning
 
-## Run Inference
-
-The downloaded detection archive contains:
-
-- `Data/Images_Detection/` with 24,404 `.png` files
-- `Data/Audio_Detection/` with 11,520 `.wav` files
-- sample submission files with columns `full_secret_name,prediction`
-
-Extract the image detection files:
-
-```powershell
-python scripts/prepare_data.py `
-  --zip data/ImageCLEF2026-DeepFakeDetection-Tes.zip `
-  --output data/raw/imageclef_detection `
-  --prefix Data/Images_Detection/
+```bash
+git clone -b fresh-embedding-approach https://github.com/Mohamedbasem1/DeepFake.git
+cd DeepFake
+pip install -r requirements-lightning.txt
 ```
 
-Run the lightweight smoke-test baseline:
+## Prepare Data
 
-```powershell
-python scripts/run_inference.py --input data/raw/test --output outputs/baseline_predictions.csv
-```
-
-Run the Lightning/Hugging Face image detector:
-
-```powershell
-python scripts/run_inference.py `
-  --config configs/image_detection_commfor.yaml `
-  --input data/raw/imageclef_detection/Data/Images_Detection `
-  --output outputs/images_detection_submission.csv
-```
-
-The official-style output CSV includes:
-
-- `full_secret_name`: filename with extension
-- `prediction`: `1` for fake/deepfake, `0` for real
-
-Use `configs/image_detection_commfor_scores.yaml` when you also want a `score`
-column for analysis and threshold calibration.
-
-## Next Steps
-
-1. Confirm the exact competition submission columns once the portal reveals them.
-2. Confirm whether `prediction` expects `0/1` or text labels on AI4MediaBench.
-3. Add external validation data and keep a local validation manifest.
-4. Add audio detection if you want to submit the audio subtask too.
-5. Ensemble model scores and calibrate the final threshold.
-
-See `docs/finetuning.md` for extracting frames from video deepfake datasets and
-fine-tuning the Community Forensics checkpoint.
-
-## Lightning Bootstrap
-
-On a fresh Lightning Studio, clone this repo and run:
+Download ImageCLEF and Celeb-DF:
 
 ```bash
 bash scripts/bootstrap_lightning_data.sh
-bash scripts/finetune_celebdf_commfor.sh
-bash scripts/run_finetuned_imageclef.sh
 ```
 
-If the AI4MediaBench download requires a refreshed link, override it:
+Optional external video datasets:
 
 ```bash
-IMAGECLEF_URL="https://..." bash scripts/bootstrap_lightning_data.sh
+bash scripts/bootstrap_faceforensics_v4.sh
 ```
+
+The training frames should end up under:
+
+```text
+data/finetune/frames/**/real/*.jpg
+data/finetune/frames/**/fake/*.jpg
+```
+
+## Train Embedding Classifier
+
+```bash
+python scripts/train_embedding_classifier.py \
+  --train-root data/finetune/frames \
+  --output models/siglip_embedding_classifier.joblib \
+  --cache models/siglip_embedding_features.npz \
+  --batch-size 64 \
+  --limit-per-class 15000
+```
+
+For a stronger run on a large machine:
+
+```bash
+python scripts/train_embedding_classifier.py \
+  --train-root data/finetune/frames \
+  --output models/siglip_embedding_classifier_big.joblib \
+  --cache models/siglip_embedding_features_big.npz \
+  --batch-size 128 \
+  --limit-per-class 30000 \
+  --c 0.5
+```
+
+## Predict ImageCLEF
+
+```bash
+python scripts/predict_embedding_classifier.py \
+  --model models/siglip_embedding_classifier.joblib \
+  --input data/raw/imageclef_detection/Data/Images_Detection \
+  --output outputs/images_detection_scores_siglip_embedding.csv \
+  --batch-size 64
+```
+
+## Package Submission
+
+If you want to submit the embedding classifier directly:
+
+```bash
+python scripts/prepare_submission_upload.py \
+  --input outputs/images_detection_scores_siglip_embedding.csv \
+  --output-csv outputs/upload/images_detection_submission_siglip_embedding.csv \
+  --output-zip outputs/upload/images_detection_submission_siglip_embedding.zip
+```
+
+## Useful Utilities
+
+Compare two submissions:
+
+```bash
+python scripts/compare_submissions.py file_a.csv file_b.csv
+```
+
+Average or max-merge multiple scored CSVs:
+
+```bash
+python scripts/merge_multiple_scores.py \
+  --mode avg \
+  --inputs score_a.csv score_b.csv score_c.csv \
+  --output outputs/merged_submission.csv
+```
+

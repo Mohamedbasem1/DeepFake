@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "imageclef-deepfake-detector"
+name = "imageclef-deepfake-embedding-detector"
 version = "0.1.0"
-description = "Inference and submission pipeline for ImageCLEF 2026 deepfake detection."
+description = "Frozen embedding classifier pipeline for ImageCLEF 2026 deepfake detection."
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.26",
@@ -23,4 +23,3 @@ deepfake-detect = "deepfake_detector.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
