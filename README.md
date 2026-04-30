@@ -82,3 +82,19 @@ column for analysis and threshold calibration.
 
 See `docs/finetuning.md` for extracting frames from video deepfake datasets and
 fine-tuning the Community Forensics checkpoint.
+
+## Lightning Bootstrap
+
+On a fresh Lightning Studio, clone this repo and run:
+
+```bash
+bash scripts/bootstrap_lightning_data.sh
+bash scripts/finetune_celebdf_commfor.sh
+bash scripts/run_finetuned_imageclef.sh
+```
+
+If the AI4MediaBench download requires a refreshed link, override it:
+
+```bash
+IMAGECLEF_URL="https://..." bash scripts/bootstrap_lightning_data.sh
+```
