@@ -107,6 +107,7 @@ def infer_label_from_path(path: Path) -> str | None:
         "neuraltextures",
         "end_to_end",
         "reenact_postprocess",
+        "altered",
     }
     real_terms = {
         "real",

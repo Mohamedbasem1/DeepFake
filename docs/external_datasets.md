@@ -152,6 +152,24 @@ For smaller/faster FaceForensics++ downloads, use `c40`:
 FF_COMPRESSION=c40 bash scripts/bootstrap_faceforensics_deeper.sh
 ```
 
+### Older FaceForensics v4 Script
+
+If your email gives `faceforensics_download_v4.py`, use:
+
+```bash
+bash scripts/bootstrap_faceforensics_v4.sh
+```
+
+This downloads the `compressed` source-to-target release by default, skips mask
+videos, accepts the script prompts automatically, and extracts frames from
+`original` as real and `altered` as fake.
+
+For a tiny smoke test:
+
+```bash
+SAMPLE_ONLY=1 bash scripts/bootstrap_faceforensics_v4.sh
+```
+
 ## Fine-Tune
 
 Once frames are ready:
