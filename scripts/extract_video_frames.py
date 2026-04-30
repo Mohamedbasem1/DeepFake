@@ -90,11 +90,40 @@ def discover_videos(root: Path) -> list[Path]:
 
 def infer_label_from_path(path: Path) -> str | None:
     parts = [part.lower() for part in path.parts]
-    fake_terms = {"fake", "fakes", "deepfake", "deepfakes", "manipulated", "manipulation", "altered"}
-    real_terms = {"real", "reals", "original", "originals", "authentic", "pristine", "youtube"}
-    if any(part in fake_terms for part in parts):
+    fake_terms = {
+        "fake",
+        "fakes",
+        "deepfake",
+        "deepfakes",
+        "manipulated",
+        "manipulation",
+        "altered",
+        "synthesis",
+        "celeb-synthesis",
+        "deepfakes",
+        "faceswap",
+        "face2face",
+        "faceshifter",
+        "neuraltextures",
+        "end_to_end",
+        "reenact_postprocess",
+    }
+    real_terms = {
+        "real",
+        "reals",
+        "original",
+        "originals",
+        "authentic",
+        "pristine",
+        "youtube",
+        "celeb-real",
+        "youtube-real",
+        "original_sequences",
+        "source_videos",
+    }
+    if any(any(term in part for term in fake_terms) for part in parts):
         return "fake"
-    if any(part in real_terms for part in parts):
+    if any(any(term in part for term in real_terms) for part in parts):
         return "real"
     return None
 
@@ -168,4 +197,3 @@ def write_manifest(path: Path, rows: list[dict[str, str | int]]) -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -11,6 +11,9 @@ ImageCLEF files strictly for inference.
 - DeeperForensics
 - DFDC
 
+See `docs/external_datasets.md` for dataset-specific access notes and frame
+extraction commands.
+
 These datasets are video-based. For our image detector, extract frames and save
 them in the local format expected by Community Forensics:
 
