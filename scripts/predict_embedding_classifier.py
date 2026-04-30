@@ -49,7 +49,7 @@ def main() -> None:
     device = resolve_device(args.device)
 
     processor = AutoImageProcessor.from_pretrained(model_id)
-    model = AutoModel.from_pretrained(model_id).to(device)
+    model = load_vision_model(model_id).to(device)
     model.eval()
 
     paths = discover_images(args.input)
@@ -101,6 +101,14 @@ def get_image_embedding(outputs) -> torch.Tensor:
     raise ValueError("Could not find image embedding in model output.")
 
 
+def load_vision_model(model_id: str):
+    if "siglip" in model_id.lower():
+        from transformers import SiglipVisionModel
+
+        return SiglipVisionModel.from_pretrained(model_id)
+    return AutoModel.from_pretrained(model_id)
+
+
 def discover_images(root: Path) -> list[Path]:
     if root.is_file():
         return [root] if root.suffix.lower() in IMAGE_EXTENSIONS else []
@@ -115,4 +123,3 @@ def resolve_device(requested: str) -> str:
 
 if __name__ == "__main__":
     main()
-

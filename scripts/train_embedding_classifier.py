@@ -97,7 +97,7 @@ def main() -> None:
         x_val, y_val = cached["x_val"], cached["y_val"]
     else:
         processor = AutoImageProcessor.from_pretrained(args.model_id)
-        model = AutoModel.from_pretrained(args.model_id).to(device)
+        model = load_vision_model(args.model_id).to(device)
         model.eval()
         x_train, y_train = extract_embeddings(
             train_samples,
@@ -229,6 +229,14 @@ def get_image_embedding(outputs) -> torch.Tensor:
     if hasattr(outputs, "last_hidden_state"):
         return outputs.last_hidden_state.mean(dim=1)
     raise ValueError("Could not find image embedding in model output.")
+
+
+def load_vision_model(model_id: str):
+    if "siglip" in model_id.lower():
+        from transformers import SiglipVisionModel
+
+        return SiglipVisionModel.from_pretrained(model_id)
+    return AutoModel.from_pretrained(model_id)
 
 
 def discover_samples(root: Path, limit_per_class: int | None) -> list[Sample]:
