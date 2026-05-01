@@ -17,6 +17,29 @@ python scripts/predict_yermandy_clip.py \
   --num-workers 4
 ```
 
+Use your labeled datasets to calibrate the decision threshold:
+
+```bash
+python scripts/calibrate_yermandy_clip_threshold.py \
+  --train-root data/finetune/frames \
+  --output models/yermandy_clip_calibration.json \
+  --scores-output outputs/yermandy_clip_calibration_scores.csv \
+  --batch-size 64 \
+  --num-workers 4 \
+  --limit-per-class 15000
+```
+
+Then use the printed `best_threshold` for ImageCLEF prediction:
+
+```bash
+python scripts/predict_yermandy_clip.py \
+  --input data/raw/imageclef_detection/Data/Images_Detection \
+  --output outputs/images_detection_scores_yermandy_clip_calibrated.csv \
+  --batch-size 64 \
+  --num-workers 4 \
+  --threshold BEST_THRESHOLD_HERE
+```
+
 Prepare a clean submission:
 
 ```bash
