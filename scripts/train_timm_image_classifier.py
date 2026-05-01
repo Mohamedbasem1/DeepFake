@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import timm
 import torch
-from PIL import Image, ImageOps
+from PIL import Image, ImageChops, ImageFilter, ImageOps
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision import transforms
 from tqdm import tqdm
@@ -46,6 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--train-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--model-name", default="convnext_base")
+    parser.add_argument(
+        "--input-mode",
+        choices=["rgb", "ycbcr", "ela", "edges", "forensic"],
+        default="rgb",
+        help="Image preprocessing inspired by forensic deepfake-review methods.",
+    )
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -76,14 +83,14 @@ def main() -> None:
 
     train_loader = build_loader(
         train_samples,
-        build_train_transform(args.image_size),
+        build_train_transform(args.image_size, args.input_mode),
         args.batch_size,
         args.num_workers,
         balanced=not args.no_balanced_sampler,
     )
     val_loader = build_loader(
         val_samples,
-        build_eval_transform(args.image_size),
+        build_eval_transform(args.image_size, args.input_mode),
         args.batch_size,
         args.num_workers,
         balanced=False,
@@ -119,6 +126,7 @@ def main() -> None:
             best_f1 = metrics["f1"]
             best_payload = {
                 "model_name": args.model_name,
+                "input_mode": args.input_mode,
                 "image_size": args.image_size,
                 "state_dict": model.state_dict(),
                 "threshold": float(metrics["threshold"]),
@@ -202,30 +210,81 @@ def build_loader(
     )
 
 
-def build_train_transform(image_size: int):
-    return transforms.Compose(
+def build_train_transform(image_size: int, input_mode: str = "rgb"):
+    steps = [
+        transforms.Lambda(lambda image: preprocess_image(image, input_mode)),
+        transforms.RandomResizedCrop(image_size, scale=(0.72, 1.0), ratio=(0.9, 1.1)),
+        transforms.RandomHorizontalFlip(),
+    ]
+    if input_mode == "rgb":
+        steps.extend(
+            [
+                transforms.ColorJitter(brightness=0.18, contrast=0.18, saturation=0.18, hue=0.03),
+                transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.15),
+            ]
+        )
+    steps.extend(
         [
-            transforms.RandomResizedCrop(image_size, scale=(0.72, 1.0), ratio=(0.9, 1.1)),
-            transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.18, contrast=0.18, saturation=0.18, hue=0.03),
-            transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.15),
             transforms.RandomRotation(5),
             transforms.ToTensor(),
             transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
         ]
     )
+    return transforms.Compose(steps)
 
 
-def build_eval_transform(image_size: int):
+def build_eval_transform(image_size: int, input_mode: str = "rgb"):
     resize_size = int(round(image_size * 1.15))
     return transforms.Compose(
         [
+            transforms.Lambda(lambda image: preprocess_image(image, input_mode)),
             transforms.Resize(resize_size),
             transforms.CenterCrop(image_size),
             transforms.ToTensor(),
             transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
         ]
     )
+
+
+def preprocess_image(image: Image.Image, input_mode: str) -> Image.Image:
+    image = image.convert("RGB")
+    if input_mode == "rgb":
+        return image
+    if input_mode == "ycbcr":
+        return image.convert("YCbCr").convert("RGB")
+    if input_mode == "ela":
+        return ela_image(image)
+    if input_mode == "edges":
+        return edge_image(image)
+    if input_mode == "forensic":
+        y, _, _ = image.convert("YCbCr").split()
+        edge = edge_image(image).convert("L")
+        ela = ela_image(image).convert("L")
+        return Image.merge("RGB", (y, edge, ela))
+    raise ValueError(f"Unsupported input mode: {input_mode}")
+
+
+def ela_image(image: Image.Image, quality: int = 90, scale: float = 12.0) -> Image.Image:
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=quality)
+    buffer.seek(0)
+    compressed = Image.open(buffer).convert("RGB")
+    diff = ImageChops.difference(image, compressed)
+    arr = np.asarray(diff, dtype=np.float32) * scale
+    arr = np.clip(arr, 0, 255).astype(np.uint8)
+    return Image.fromarray(arr, mode="RGB")
+
+
+def edge_image(image: Image.Image) -> Image.Image:
+    gray = image.convert("L")
+    try:
+        import cv2
+
+        arr = np.asarray(gray)
+        edges = cv2.Canny(arr, 80, 160)
+        return Image.fromarray(edges, mode="L").convert("RGB")
+    except Exception:
+        return gray.filter(ImageFilter.FIND_EDGES).convert("RGB")
 
 
 def find_best_threshold(scores: np.ndarray, labels: np.ndarray) -> dict[str, float]:

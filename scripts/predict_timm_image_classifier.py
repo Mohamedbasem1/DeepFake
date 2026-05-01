@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 from pathlib import Path
 
 import timm
 import torch
-from PIL import Image, ImageOps
+import numpy as np
+from PIL import Image, ImageChops, ImageFilter, ImageOps
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from tqdm import tqdm
@@ -55,6 +57,7 @@ def main() -> None:
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
     model_name = checkpoint["model_name"]
     image_size = int(checkpoint["image_size"])
+    input_mode = checkpoint.get("input_mode", "rgb")
     threshold = float(args.threshold if args.threshold is not None else checkpoint.get("threshold", 0.5))
 
     model = timm.create_model(model_name, pretrained=False, num_classes=1)
@@ -66,7 +69,7 @@ def main() -> None:
         raise FileNotFoundError(f"No images found under {args.input}")
 
     loader = DataLoader(
-        PathDataset(paths, build_eval_transform(image_size, checkpoint), args.tta_hflip),
+        PathDataset(paths, build_eval_transform(image_size, checkpoint, input_mode), args.tta_hflip),
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
@@ -99,21 +102,64 @@ def main() -> None:
 
     print(f"wrote {len(paths)} predictions to {args.output}")
     print(f"model: {model_name}")
+    print(f"input_mode: {input_mode}")
     print(f"threshold: {threshold:.6f}")
 
 
-def build_eval_transform(image_size: int, checkpoint):
+def build_eval_transform(image_size: int, checkpoint, input_mode: str):
     mean = tuple(checkpoint.get("mean", (0.485, 0.456, 0.406)))
     std = tuple(checkpoint.get("std", (0.229, 0.224, 0.225)))
     resize_size = int(round(image_size * 1.15))
     return transforms.Compose(
         [
+            transforms.Lambda(lambda image: preprocess_image(image, input_mode)),
             transforms.Resize(resize_size),
             transforms.CenterCrop(image_size),
             transforms.ToTensor(),
             transforms.Normalize(mean, std),
         ]
     )
+
+
+def preprocess_image(image: Image.Image, input_mode: str) -> Image.Image:
+    image = image.convert("RGB")
+    if input_mode == "rgb":
+        return image
+    if input_mode == "ycbcr":
+        return image.convert("YCbCr").convert("RGB")
+    if input_mode == "ela":
+        return ela_image(image)
+    if input_mode == "edges":
+        return edge_image(image)
+    if input_mode == "forensic":
+        y, _, _ = image.convert("YCbCr").split()
+        edge = edge_image(image).convert("L")
+        ela = ela_image(image).convert("L")
+        return Image.merge("RGB", (y, edge, ela))
+    raise ValueError(f"Unsupported input mode: {input_mode}")
+
+
+def ela_image(image: Image.Image, quality: int = 90, scale: float = 12.0) -> Image.Image:
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=quality)
+    buffer.seek(0)
+    compressed = Image.open(buffer).convert("RGB")
+    diff = ImageChops.difference(image, compressed)
+    arr = np.asarray(diff, dtype=np.float32) * scale
+    arr = np.clip(arr, 0, 255).astype(np.uint8)
+    return Image.fromarray(arr, mode="RGB")
+
+
+def edge_image(image: Image.Image) -> Image.Image:
+    gray = image.convert("L")
+    try:
+        import cv2
+
+        arr = np.asarray(gray)
+        edges = cv2.Canny(arr, 80, 160)
+        return Image.fromarray(edges, mode="L").convert("RGB")
+    except Exception:
+        return gray.filter(ImageFilter.FIND_EDGES).convert("RGB")
 
 
 def discover_images(root: Path) -> list[Path]:
