@@ -72,9 +72,10 @@ def main() -> None:
 def read_submission(path: Path, id_column: str, label_column: str) -> dict[str, str]:
     with path.open("r", newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
-        if reader.fieldnames != [id_column, label_column]:
+        fieldnames = reader.fieldnames or []
+        if id_column not in fieldnames or label_column not in fieldnames:
             raise ValueError(
-                f"{path} must have exactly these columns: {id_column},{label_column}. "
+                f"{path} must contain these columns: {id_column},{label_column}. "
                 f"Found: {reader.fieldnames}"
             )
 
@@ -154,4 +155,3 @@ def count_labels(labels) -> dict[str, int]:
 
 if __name__ == "__main__":
     main()
-
