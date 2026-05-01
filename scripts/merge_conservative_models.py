@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 DEFAULT_INPUTS = [
+    Path("outputs/upload/images_detection_submission_e5_e8_e20_avg.csv"),
     Path("outputs/upload/images_detection_submission_sky_classic_avg.csv"),
     Path("outputs/upload/images_detection_submission_efficientnet_b4_forensic.csv"),
     Path("outputs/upload/images_detection_submission_convnext_tiny_forensic.csv"),
@@ -28,12 +29,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("outputs/upload/images_detection_submission_conservative_union.csv"),
+        default=Path("outputs/upload/images_detection_submission_cf_conservative_union.csv"),
     )
     parser.add_argument(
         "--debug-output",
         type=Path,
-        default=Path("outputs/images_detection_conservative_union_debug.csv"),
+        default=Path("outputs/images_detection_cf_conservative_union_debug.csv"),
     )
     parser.add_argument(
         "--min-votes",
